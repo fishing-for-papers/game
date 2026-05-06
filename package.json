@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@iconify-icon/react": "^3.0.3",
+    "@iconify-icons/icon-park-outline": "^1.2.11",
     "@iconify/react": "^5.1.1",
     "@tailwindcss/vite": "^4.1.18",
     "concaveman": "^2.0.0",

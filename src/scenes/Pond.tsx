@@ -1,7 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import Modal from '../components/ui/Modal'
 import BackButton from '../components/BackButton'
-import DebugButton from '../components/DebugButton'
 import Contours from '../components/Contours'
 import Environment from '../components/Environment'
 import Ripples from '../components/Ripples'
@@ -9,6 +8,8 @@ import FishSchools from '../components/FishSchools'
 import Boat from '../components/Boat'
 import Cast from '../components/Cast'
 import KeywormControl from '../components/controls/KeywormControl'
+import AnnotationControl from '../components/annotations/AnnotationControl'
+import PondAnnotationsOverlay from '../components/annotations/PondAnnotationsOverlay'
 import LoadingOverlay from '../components/LoadingOverlay'
 import SearchDebugPanel from '../components/SearchDebugPanel'
 import KeywormScene from './Keyworm'
@@ -16,11 +17,12 @@ import CatchResult from './CatchResult'
 import { MARGIN } from '../config/layoutConstants'
 import { useBoatKeyboardControl } from '../hooks/useBoatKeyboardControl'
 import { useCoordinateSystem } from '../hooks/useCoordinateSystem'
+import { usePondBoundary } from '../hooks/usePondBoundary'
 import { useCoordinateStore } from '../stores/useCoordinateStore'
 import { usePaperStore } from '../stores/usePaperStore'
 import { useKeywormStore } from '../stores/useKeywormStore'
-import { useDebugStore } from '../stores/useDebugStore'
 import { useCastStore } from '../stores/useCastStore'
+import { useGameStateStore } from '../stores/useGameStateStore'
 
 type PondSceneProps = {
   onNavigate: (target: 'start' | 'pond' | 'map' | 'gallery') => void
@@ -31,9 +33,11 @@ function PondScene({ onNavigate }: PondSceneProps) {
   const [isKeywormModalOpen, setIsKeywormModalOpen] = useState(false)
   const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [selectedAnnotationGlyph, setSelectedAnnotationGlyph] = useState<string | null>(null)
+  const isGlyphPlacementMode = selectedAnnotationGlyph !== null
 
   const setDimensions = useCoordinateStore((state) => state.setDimensions)
-  const { isReady } = useCoordinateSystem()
+  const { isReady, contentWidth, contentHeight } = useCoordinateSystem()
   const loadPapersAndBuildIndex = usePaperStore((state) => state.loadPapersAndBuildIndex)
   const isIndexReady = usePaperStore((state) => state.isIndexReady)
   const isLoading = usePaperStore((state) => state.isLoading)
@@ -41,13 +45,22 @@ function PondScene({ onNavigate }: PondSceneProps) {
   const papers = usePaperStore((state) => state.papers)
   const keywormKeywords = useKeywormStore((state) => state.keywords)
   const addKeyword = useKeywormStore((state) => state.addKeyword)
-  const isDebugMode = useDebugStore((state) => state.isDebugMode)
   const isCatchResultOpen = useCastStore((state) => state.isCatchResultOpen)
   const setIsCatchResultOpen = useCastStore((state) => state.setIsCatchResultOpen)
   const caughtPaper = useCastStore((state) => state.caughtPaper)
+  const pondAnnotations = useGameStateStore((state) => state.pondAnnotations)
+  const addPondAnnotation = useGameStateStore((state) => state.addPondAnnotation)
+  const updatePondAnnotation = useGameStateStore((state) => state.updatePondAnnotation)
+  const removePondAnnotation = useGameStateStore((state) => state.removePondAnnotation)
+
+  // Get pond boundary path from shared hook
+  const pondBoundaryPath = usePondBoundary()
+  const pondBoundaryPaths = pondBoundaryPath ? [pondBoundaryPath] : []
 
   // Enable keyboard control for boat (disabled when any modal or debug panel is open)
-  useBoatKeyboardControl(!isKeywormModalOpen && !isDebugPanelOpen && !isCatchResultOpen)
+  useBoatKeyboardControl(
+    !isKeywormModalOpen && !isDebugPanelOpen && !isCatchResultOpen && !isGlyphPlacementMode
+  )
 
   // Monitor container size and update coordinate store
   useEffect(() => {
@@ -122,12 +135,31 @@ function PondScene({ onNavigate }: PondSceneProps) {
             <g transform={`translate(${MARGIN}, ${MARGIN})`}>
               <Boat />
               <Cast 
-                enabled={!isKeywormModalOpen && !isDebugPanelOpen && !isCatchResultOpen}
+                enabled={!isKeywormModalOpen && !isDebugPanelOpen && !isCatchResultOpen && !isGlyphPlacementMode}
               />
             </g>
           </>
         )}
       </svg>
+        {isReady && (
+          <PondAnnotationsOverlay
+            annotations={pondAnnotations}
+            contentWidth={contentWidth}
+            contentHeight={contentHeight}
+            isMarkMode={isGlyphPlacementMode}
+            selectedGlyph={selectedAnnotationGlyph}
+            note=""
+            boundaryPaths={pondBoundaryPaths}
+            onAddAnnotation={addPondAnnotation}
+            onUpdateAnnotation={updatePondAnnotation}
+            onRemoveAnnotation={removePondAnnotation}
+            onFinishEditing={() => setSelectedAnnotationGlyph(null)}
+          />
+        )}
+        <AnnotationControl
+          selectedGlyph={selectedAnnotationGlyph}
+          onSelectGlyph={setSelectedAnnotationGlyph}
+        />
       </div>
 
       {/* Keyworm Modal */}

@@ -19,6 +19,7 @@ interface StoredGameSession extends GameSessionSummary {
 const normalizeGameState = (state: Partial<GameState> | null | undefined): GameState => ({
   caughtPapers: Array.isArray(state?.caughtPapers) ? state.caughtPapers : [],
   keywormKeywords: Array.isArray(state?.keywormKeywords) ? state.keywormKeywords : [],
+  pondAnnotations: Array.isArray(state?.pondAnnotations) ? state.pondAnnotations : [],
 })
 
 const parseStoredSessions = (): StoredGameSession[] => {
@@ -280,4 +281,5 @@ export const loadActiveGameState = (): { sessionId: string; state: GameState } |
 export const createInitialGameState = (): GameState => ({
   caughtPapers: [],
   keywormKeywords: [],
+  pondAnnotations: [],
 })

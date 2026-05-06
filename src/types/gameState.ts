@@ -7,9 +7,20 @@ export interface CaughtPaper {
   imageVersion?: number // timestamp for image cache busting when regenerated
 }
 
+export interface PondAnnotation {
+  id: string
+  x: number
+  y: number
+  glyph: string
+  note: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface GameState {
   caughtPapers: CaughtPaper[]
   keywormKeywords: string[]
+  pondAnnotations: PondAnnotation[]
   // Add more game state properties here as needed:
   // currentScene?: string
   // playerProgress?: number

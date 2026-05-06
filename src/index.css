@@ -59,6 +59,11 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+button.no-focus-ring:focus,
+button.no-focus-ring:focus-visible {
+  outline: none;
+}
+
 .start-button {
   padding: 18px 44px;
   font-size: 1.25rem;

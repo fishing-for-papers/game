@@ -5,6 +5,7 @@ import StartScene from './scenes/Start'
 import MapScene from './scenes/Map'
 import GalleryScene from './scenes/Gallery'
 import backgroundMusic from './assets/sounds/background-music.mp3'
+import IconButton from './components/ui/IconButton'
 import { useGameStateStore } from './stores/useGameStateStore'
 import { useKeywormStore } from './stores/useKeywormStore'
 import type { GameSessionSummary } from './utils/gameStorage'
@@ -145,10 +146,8 @@ function App() {
       )}
 
       <div className="fixed left-6 bottom-6 z-50">
-        <button
-          type="button"
+        <IconButton
           onClick={() => setIsMuted((prev) => !prev)}
-          className="back-button p-2 rounded-full bg-white/85 text-slate-900 shadow-lg hover:bg-white focus-visible:outline focus-visible:outline-4 focus-visible:outline-white"
           aria-label={isMuted ? 'Unmute background music' : 'Mute background music'}
           title={isMuted ? 'Unmute music' : 'Mute music'}
         >
@@ -165,7 +164,7 @@ function App() {
               <path d="M18.5 5.5a9 9 0 0 1 0 13" />
             </svg>
           )}
-        </button>
+        </IconButton>
       </div>
     </div>
   )

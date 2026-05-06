@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GameState, CaughtPaper } from '../types/gameState'
+import type { GameState, CaughtPaper, PondAnnotation } from '../types/gameState'
 import type { Paper } from '../types/paper'
 import {
   saveGameState,
@@ -23,6 +23,9 @@ interface GameStateStore extends GameState {
   resetGame: () => void
   updateCaughtPaper: (index: number, updates: Partial<CaughtPaper>) => void
   setKeywormKeywords: (keywords: string[]) => void
+  addPondAnnotation: (annotation: Omit<PondAnnotation, 'id' | 'createdAt' | 'updatedAt'>) => string
+  updatePondAnnotation: (id: string, updates: Partial<Omit<PondAnnotation, 'id' | 'createdAt'>>) => void
+  removePondAnnotation: (id: string) => void
   startNewSession: () => void
   resumeSession: (sessionId: string) => boolean
   getAvailableSessions: () => GameSessionSummary[]
@@ -46,6 +49,7 @@ export const useGameStateStore = create<GameStateStore>((set, get) => ({
       const newState: GameState = {
         caughtPapers: [...state.caughtPapers, caughtPaper],
         keywormKeywords: state.keywormKeywords,
+        pondAnnotations: state.pondAnnotations,
       }
 
       const currentSessionId = get().currentSessionId
@@ -67,6 +71,7 @@ export const useGameStateStore = create<GameStateStore>((set, get) => ({
           return caught.paper.title !== paper.title
         }),
         keywormKeywords: state.keywormKeywords,
+        pondAnnotations: state.pondAnnotations,
       }
 
       const currentSessionId = get().currentSessionId
@@ -115,6 +120,7 @@ export const useGameStateStore = create<GameStateStore>((set, get) => ({
       const newState: GameState = {
         caughtPapers: updatedPapers,
         keywormKeywords: state.keywormKeywords,
+        pondAnnotations: state.pondAnnotations,
       }
 
       const currentSessionId = get().currentSessionId
@@ -131,6 +137,7 @@ export const useGameStateStore = create<GameStateStore>((set, get) => ({
       const newState: GameState = {
         caughtPapers: state.caughtPapers,
         keywormKeywords: [...keywords],
+        pondAnnotations: state.pondAnnotations,
       }
 
       const currentSessionId = get().currentSessionId
@@ -141,6 +148,77 @@ export const useGameStateStore = create<GameStateStore>((set, get) => ({
       return {
         keywormKeywords: [...keywords],
       }
+    })
+  },
+
+  addPondAnnotation: (annotation) => {
+    const now = Date.now()
+    const id = `annotation-${now}-${Math.random().toString(36).slice(2, 8)}`
+
+    set((state) => {
+      const newAnnotation: PondAnnotation = {
+        ...annotation,
+        id,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const newState: GameState = {
+        caughtPapers: state.caughtPapers,
+        keywormKeywords: state.keywormKeywords,
+        pondAnnotations: [...state.pondAnnotations, newAnnotation],
+      }
+
+      const currentSessionId = get().currentSessionId
+      if (currentSessionId) {
+        saveGameState(newState, currentSessionId)
+      }
+
+      return newState
+    })
+
+    return id
+  },
+
+  updatePondAnnotation: (id, updates) => {
+    set((state) => {
+      const nextAnnotations = state.pondAnnotations.map((annotation) =>
+        annotation.id === id
+          ? {
+              ...annotation,
+              ...updates,
+              updatedAt: Date.now(),
+            }
+          : annotation
+      )
+      const newState: GameState = {
+        caughtPapers: state.caughtPapers,
+        keywormKeywords: state.keywormKeywords,
+        pondAnnotations: nextAnnotations,
+      }
+
+      const currentSessionId = get().currentSessionId
+      if (currentSessionId) {
+        saveGameState(newState, currentSessionId)
+      }
+
+      return newState
+    })
+  },
+
+  removePondAnnotation: (id) => {
+    set((state) => {
+      const newState: GameState = {
+        caughtPapers: state.caughtPapers,
+        keywormKeywords: state.keywormKeywords,
+        pondAnnotations: state.pondAnnotations.filter((annotation) => annotation.id !== id),
+      }
+
+      const currentSessionId = get().currentSessionId
+      if (currentSessionId) {
+        saveGameState(newState, currentSessionId)
+      }
+
+      return newState
     })
   },
 
