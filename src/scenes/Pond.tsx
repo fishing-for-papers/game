@@ -8,7 +8,7 @@ import Ripples from '../components/Ripples'
 import FishSchools from '../components/FishSchools'
 import Boat from '../components/Boat'
 import Cast from '../components/Cast'
-import Gear from '../components/controls/Gear'
+import KeywormControl from '../components/controls/KeywormControl'
 import LoadingOverlay from '../components/LoadingOverlay'
 import SearchDebugPanel from '../components/SearchDebugPanel'
 import KeywormScene from './Keyworm'
@@ -18,6 +18,7 @@ import { useBoatKeyboardControl } from '../hooks/useBoatKeyboardControl'
 import { useCoordinateSystem } from '../hooks/useCoordinateSystem'
 import { useCoordinateStore } from '../stores/useCoordinateStore'
 import { usePaperStore } from '../stores/usePaperStore'
+import { useKeywormStore } from '../stores/useKeywormStore'
 import { useDebugStore } from '../stores/useDebugStore'
 import { useCastStore } from '../stores/useCastStore'
 
@@ -37,6 +38,9 @@ function PondScene({ onNavigate }: PondSceneProps) {
   const isIndexReady = usePaperStore((state) => state.isIndexReady)
   const isLoading = usePaperStore((state) => state.isLoading)
   const selectedVenue = usePaperStore((state) => state.selectedVenue)
+  const papers = usePaperStore((state) => state.papers)
+  const keywormKeywords = useKeywormStore((state) => state.keywords)
+  const addKeyword = useKeywormStore((state) => state.addKeyword)
   const isDebugMode = useDebugStore((state) => state.isDebugMode)
   const isCatchResultOpen = useCastStore((state) => state.isCatchResultOpen)
   const setIsCatchResultOpen = useCastStore((state) => state.setIsCatchResultOpen)
@@ -85,9 +89,12 @@ function PondScene({ onNavigate }: PondSceneProps) {
           </BackButton>
           {/* <DebugButton /> */}
         </div>
-        <div className="absolute right-6 top-6 z-10">
-          <Gear onClick={() => setIsKeywormModalOpen(true)} />
-        </div>
+        <KeywormControl
+          papers={papers}
+          keywords={keywormKeywords}
+          onOpenKeyworm={() => setIsKeywormModalOpen(true)}
+          onAddKeyword={addKeyword}
+        />
         <svg className="w-full h-full">
         <defs>
           <filter id="hand-drawn" x="-20%" y="-20%" width="140%" height="140%">
