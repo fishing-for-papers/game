@@ -74,8 +74,8 @@ export const usePaperStore = create<PaperStore>((set, get) => ({
     const { papers, searchQuery } = get()
     if (!searchQuery.trim()) return papers
 
-    // Use FlexSearch for fuzzy search
-    return searchService.search(searchQuery)
+    // Use the shared search service so default and fallback modes stay consistent.
+    return searchService.search(searchQuery).papers
   },
 
   setSelectedVenue: (venue) => {

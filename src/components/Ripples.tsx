@@ -7,6 +7,7 @@ import { useCoordinateSystem } from '../hooks/useCoordinateSystem'
 import { searchService } from '../services/searchService'
 import { MARGIN } from '../config/layoutConstants'
 import { rippleConfig } from '../config/rippleConfig'
+import type { SearchResponse } from '../services/searchService'
 import type { Paper } from '../types/paper'
 import Ripple from './Ripple'
 
@@ -67,14 +68,22 @@ function Ripples() {
   const { contentWidth, contentHeight, xScale, yScale } = useCoordinateSystem()
 
   // Search papers using combined keywords
-  const searchedPapers = useMemo<Paper[]>(() => {
+  const searchResponse = useMemo<SearchResponse>(() => {
     if (keywords.length === 0 || !searchService.isReady() || !isIndexReady) {
       console.log('[Ripples] No keywords or search service not ready', {
         hasKeywords: keywords.length > 0,
         searchServiceReady: searchService.isReady(),
         isIndexReady
       })
-      return []
+      return {
+        papers: [],
+        mode: null,
+        defaultMode: 'exact',
+        fallbackMode: 'bm25',
+        usedFallback: false,
+        defaultCount: 0,
+        fallbackCount: 0,
+      }
     }
 
     // Combine all keywords into a single search query
@@ -82,20 +91,31 @@ function Ripples() {
     console.log('[Ripples] Search query:', combinedQuery)
 
     // Search with random sampling enabled
-    const results = searchService.search(
+    const response = searchService.search(
       combinedQuery,
       rippleConfig.searchLimit,
-      { random: rippleConfig.randomSampling }
+      {
+        random: rippleConfig.randomSampling,
+        fallbackLimit: rippleConfig.fallbackSearchLimit,
+      }
     )
 
-    console.log('[Ripples] Search results:', {
-      query: combinedQuery,
-      displayedCount: results.length,
-      papers: results
-    })
+    // console.log('[Ripples] Search results:', {
+    //   query: combinedQuery,
+    //   mode: response.mode,
+    //   defaultMode: response.defaultMode,
+    //   fallbackMode: response.fallbackMode,
+    //   usedFallback: response.usedFallback,
+    //   defaultCount: response.defaultCount,
+    //   fallbackCount: response.fallbackCount,
+    //   message: response.message,
+    //   displayedCount: response.papers.length,
+    //   papers: response.papers
+    // })
 
-    return results
+    return response
   }, [keywords, papers, isIndexReady])
+  const searchedPapers = searchResponse.papers
 
   // Cluster nearby papers
   const clusters = useMemo(() => {
@@ -148,6 +168,12 @@ function Ripples() {
   const gridSize = rippleConfig.clusterGridSize
   const innerWidth = contentWidth
   const innerHeight = contentHeight
+  const estimatedMessageWidth = (searchResponse.message?.length ?? 0) * 7 + 36
+  const messageWidth = Math.min(
+    480,
+    contentWidth - 32,
+    Math.max(260, estimatedMessageWidth)
+  )
 
   // Debug elements
   const verticalLines = []
@@ -228,6 +254,34 @@ function Ripples() {
           />
         )
       })}
+
+      {searchResponse.message && (
+        <g
+          className="search-fallback-message"
+          transform={`translate(${contentWidth / 2}, 28)`}
+          pointerEvents="none"
+        >
+          <rect
+            x={-messageWidth / 2}
+            y={-18}
+            width={messageWidth}
+            height={36}
+            rx={8}
+            fill="rgba(255, 255, 255, 0.78)"
+            stroke="rgba(42, 57, 72, 0.2)"
+          />
+          <text
+            x={0}
+            y={4}
+            textAnchor="middle"
+            fontSize={13}
+            fontWeight={600}
+            fill="#2a3948"
+          >
+            {searchResponse.message}
+          </text>
+        </g>
+      )}
 
       {/* Debug circles - only show in debug mode */}
       {isDebugMode &&

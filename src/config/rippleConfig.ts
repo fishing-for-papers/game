@@ -16,5 +16,6 @@ export const rippleConfig = {
 
   // Search parameters
   searchLimit: 100,
+  fallbackSearchLimit: 10,
   randomSampling: true,
 }

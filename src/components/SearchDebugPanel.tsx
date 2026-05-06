@@ -11,7 +11,10 @@ function SearchDebugPanel({ isOpen, onClose }: SearchDebugPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Paper[]>([])
   const [searchTime, setSearchTime] = useState<number>(0)
+  const [searchMode, setSearchMode] = useState<string>('none')
+  const [usedFallback, setUsedFallback] = useState(false)
   const SEARCH_LIMIT = 50
+  const FALLBACK_LIMIT = 10
 
   const handleSearch = (query: string) => {
     setSearchQuery(query)
@@ -19,15 +22,21 @@ function SearchDebugPanel({ isOpen, onClose }: SearchDebugPanelProps) {
     if (!query.trim()) {
       setSearchResults([])
       setSearchTime(0)
+      setSearchMode('none')
+      setUsedFallback(false)
       return
     }
 
     const startTime = performance.now()
-    const results = searchService.search(query, SEARCH_LIMIT)
+    const response = searchService.search(query, SEARCH_LIMIT, {
+      fallbackLimit: FALLBACK_LIMIT,
+    })
     const endTime = performance.now()
 
-    setSearchResults(results)
+    setSearchResults(response.papers)
     setSearchTime(endTime - startTime)
+    setSearchMode(response.mode ?? 'none')
+    setUsedFallback(response.usedFallback)
   }
 
   if (!isOpen) return null
@@ -36,7 +45,7 @@ function SearchDebugPanel({ isOpen, onClose }: SearchDebugPanelProps) {
     <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-2xl z-50 flex flex-col">
       {/* Header */}
       <div className="bg-gray-800 text-white p-4 flex justify-between items-center">
-        <h2 className="text-lg font-semibold">FlexSearch Debug Panel</h2>
+        <h2 className="text-lg font-semibold">Search Debug Panel</h2>
         <button
           onClick={onClose}
           className="text-gray-800 hover:text-gray-300 text-2xl leading-none"
@@ -58,7 +67,9 @@ function SearchDebugPanel({ isOpen, onClose }: SearchDebugPanelProps) {
         {searchQuery && (
           <div className="mt-2 text-sm text-gray-600">
             Found {searchResults.length} results in {searchTime.toFixed(2)}ms
-            <span className="ml-2 text-gray-500">(limit: {SEARCH_LIMIT})</span>
+            <span className="ml-2 text-gray-500">
+              ({searchMode}, limit: {usedFallback ? FALLBACK_LIMIT : SEARCH_LIMIT})
+            </span>
           </div>
         )}
       </div>
