@@ -12,7 +12,7 @@ interface DebugActions {
 type DebugStore = DebugState & DebugActions
 
 export const useDebugStore = create<DebugStore>((set, get) => ({
-  isDebugMode: true, // Debug mode is ON by default while tuning catch interactions
+  isDebugMode: false, // Debug mode is OFF by default
 
   toggleDebugMode: () => {
     set({ isDebugMode: !get().isDebugMode })
