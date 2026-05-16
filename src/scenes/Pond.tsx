@@ -12,7 +12,7 @@ import AnnotationControl from '../components/annotations/AnnotationControl'
 import PondAnnotationsOverlay from '../components/annotations/PondAnnotationsOverlay'
 import LoadingOverlay from '../components/LoadingOverlay'
 import SearchDebugPanel from '../components/SearchDebugPanel'
-import DebugButton from '../components/DebugButton'
+// import DebugButton from '../components/DebugButton'
 import KeywormScene from './Keyworm'
 import CatchResult from './CatchResult'
 import { MARGIN } from '../config/layoutConstants'
@@ -101,7 +101,7 @@ function PondScene({ onNavigate }: PondSceneProps) {
           <BackButton target="gallery" onNavigate={onNavigate}>
             Gallery
           </BackButton>
-          <DebugButton />
+          {/* <DebugButton /> */}
         </div>
         <KeywormControl
           papers={papers}

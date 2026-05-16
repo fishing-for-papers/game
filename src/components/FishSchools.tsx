@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCastStore } from '../stores/useCastStore'
 import { useDebugStore } from '../stores/useDebugStore'
+import { catchingConfig } from '../config/catchingConfig'
 import { MARGIN } from '../config/layoutConstants'
 import {
-  FISH_ATTENTION_ZONE,
   getOrbitFishPose,
   stableUnit,
   type FishDescriptor,
@@ -115,10 +115,10 @@ function FishSchools() {
             }
 
             const pose = getOrbitFishPose(fish, debugNow)
-            const minDistance = fish.size * FISH_ATTENTION_ZONE.minDistanceScale
-            const maxDistance = fish.size * FISH_ATTENTION_ZONE.maxDistanceScale
+            const minDistance = catchingConfig.fishAttentionMinDistance
+            const maxDistance = catchingConfig.fishAttentionMaxDistance
             const headingAngle = Math.atan2(pose.headingY, pose.headingX) * 180 / Math.PI
-            const halfAngle = FISH_ATTENTION_ZONE.angleDegrees / 2
+            const halfAngle = catchingConfig.fishAttentionAngleDegrees / 2
             const attentionPath = createAttentionZonePath(
               pose.x,
               pose.y,

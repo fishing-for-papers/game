@@ -7,6 +7,7 @@ import { useCoordinateSystem } from '../hooks/useCoordinateSystem'
 import { searchService } from '../services/searchService'
 import { MARGIN } from '../config/layoutConstants'
 import { rippleConfig } from '../config/rippleConfig'
+import { getRippleMetrics } from '../utils/rippleMetrics'
 import type { SearchResponse } from '../services/searchService'
 import type { Paper } from '../types/paper'
 import Ripple from './Ripple'
@@ -228,8 +229,7 @@ function Ripples() {
       {/* Animated ripples for each cluster */}
       {clusters.map((cluster, index) => {
         // Map cluster size to ripple parameters
-        const baseRadius = 10 + cluster.count * 1 // Larger clusters = larger base radius
-        const ringCount = Math.min(1 + Math.floor(cluster.count / 5), 6) // More papers = more rings (max 6)
+        const { baseRadius, ringCount } = getRippleMetrics(cluster.count)
         const opacity = Math.min(0.3 + cluster.count * 0.05, 0.8) // More papers = more visible
         const duration = cluster.count === 1 ? 5 : Math.max(2, 4 - cluster.count * 0.1) // More papers = faster animation (min 1.5s)
 
@@ -286,23 +286,33 @@ function Ripples() {
       {/* Debug circles - only show in debug mode */}
       {isDebugMode &&
         clusters.map((cluster, index) => {
-          // Scale radius based on cluster size (sqrt for area scaling)
-          const radius = rippleConfig.baseRadius * Math.sqrt(cluster.count)
+          const { influenceRadius, outerRadius } = getRippleMetrics(cluster.count)
 
           return (
-            <circle
-              key={`debug-${index}`}
-              cx={cluster.x}
-              cy={cluster.y}
-              r={radius}
-              fill={rippleConfig.color}
-              fillOpacity={rippleConfig.fillOpacity}
-              stroke={rippleConfig.color}
-              strokeWidth={rippleConfig.strokeWidth}
-              strokeOpacity={rippleConfig.strokeOpacity}
-            >
-              <title>{`${cluster.count} paper${cluster.count > 1 ? 's' : ''}`}</title>
-            </circle>
+            <g key={`debug-${index}`}>
+              <circle
+                cx={cluster.x}
+                cy={cluster.y}
+                r={outerRadius}
+                fill="none"
+                stroke="#ffffff"
+                strokeWidth={1}
+                strokeDasharray="3,3"
+                strokeOpacity={0.28}
+              />
+              <circle
+                cx={cluster.x}
+                cy={cluster.y}
+                r={influenceRadius}
+                fill="none"
+                stroke={rippleConfig.color}
+                strokeWidth={1.25}
+                strokeDasharray="6,3"
+                strokeOpacity={0.65}
+              >
+                <title>{`${cluster.count} paper${cluster.count > 1 ? 's' : ''}`}</title>
+              </circle>
+            </g>
           )
         })}
     </g>

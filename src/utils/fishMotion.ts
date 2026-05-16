@@ -1,4 +1,5 @@
 import type { Paper } from '../types/paper'
+import { catchingConfig } from '../config/catchingConfig'
 
 export type FishDirection = 'clockwise' | 'counterclockwise'
 
@@ -30,12 +31,6 @@ export interface FishBiteTarget {
   paper: Paper
 }
 
-export const FISH_ATTENTION_ZONE = {
-  minDistanceScale: 0.55,
-  maxDistanceScale: 2.1,
-  angleDegrees: 42,
-} as const
-
 export function getOrbitFishPose(fish: FishDescriptor, now = performance.now()): FishPose {
   const elapsedSeconds = Math.max(0, (now - fish.startedAt) / 1000 - fish.delay)
   const cycleProgress = fish.speed > 0 ? (elapsedSeconds % fish.speed) / fish.speed : 0
@@ -58,14 +53,13 @@ export function getOrbitFishPose(fish: FishDescriptor, now = performance.now()):
 
 export function isPointInFishAttentionZone(
   point: { x: number; y: number },
-  pose: FishPose,
-  fishSize: number
+  pose: FishPose
 ): boolean {
   const dx = point.x - pose.x
   const dy = point.y - pose.y
   const distance = Math.sqrt(dx * dx + dy * dy)
-  const minDistance = fishSize * FISH_ATTENTION_ZONE.minDistanceScale
-  const maxDistance = fishSize * FISH_ATTENTION_ZONE.maxDistanceScale
+  const minDistance = catchingConfig.fishAttentionMinDistance
+  const maxDistance = catchingConfig.fishAttentionMaxDistance
 
   if (distance < minDistance || distance > maxDistance) {
     return false
@@ -74,7 +68,7 @@ export function isPointInFishAttentionZone(
   const directionToPointX = dx / distance
   const directionToPointY = dy / distance
   const dot = pose.headingX * directionToPointX + pose.headingY * directionToPointY
-  const halfAngleRad = (FISH_ATTENTION_ZONE.angleDegrees / 2) * Math.PI / 180
+  const halfAngleRad = (catchingConfig.fishAttentionAngleDegrees / 2) * Math.PI / 180
 
   return dot >= Math.cos(halfAngleRad)
 }
@@ -95,7 +89,7 @@ export function findFishBiteTarget(
     }
 
     const pose = getOrbitFishPose(fish, now)
-    if (!isPointInFishAttentionZone(point, pose, fish.size)) {
+    if (!isPointInFishAttentionZone(point, pose)) {
       continue
     }
 

@@ -39,6 +39,7 @@ interface CastActions {
   ) => void
   setFishDescriptors: (fishDescriptors: FishDescriptor[]) => void
   hideFish: (fishId: string) => void
+  showFish: (fishId: string) => void
 
   // Update cast position
   setCastPosition: (position: { x: number; y: number } | null) => void
@@ -99,6 +100,12 @@ export const useCastStore = create<CastStore>((set, get) => ({
       hiddenFishIds: state.hiddenFishIds.includes(fishId)
         ? state.hiddenFishIds
         : [...state.hiddenFishIds, fishId],
+    }))
+  },
+
+  showFish: (fishId) => {
+    set((state) => ({
+      hiddenFishIds: state.hiddenFishIds.filter((hiddenFishId) => hiddenFishId !== fishId),
     }))
   },
 

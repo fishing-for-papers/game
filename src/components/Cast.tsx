@@ -3,13 +3,14 @@ import { useBoatStore } from '../stores/useBoatStore'
 import { useCastStore } from '../stores/useCastStore'
 import { useFishingStore } from '../stores/useFishingStore'
 import { useCoordinateSystem } from '../hooks/useCoordinateSystem'
-import { rippleConfig } from '../config/rippleConfig'
 import { useDebugStore } from '../stores/useDebugStore'
 import { boatConfig } from '../config/boatConfig'
+import { catchingConfig } from '../config/catchingConfig'
 import { MARGIN } from '../config/layoutConstants'
 import { useKeywormStore } from '../stores/useKeywormStore'
 import FishSvg from '../assets/fish/fish-01.svg?react'
-import { findFishBiteTarget } from '../utils/fishMotion'
+import { findFishBiteTarget, stableUnit } from '../utils/fishMotion'
+import { getRippleMetrics } from '../utils/rippleMetrics'
 import type { Paper } from '../types/paper'
 
 interface CastProps {
@@ -26,16 +27,10 @@ const FISHABLE_RANGE_CONFIG = {
   maxDistance: 75, // Maximum fishing distance in canvas coordinates
 }
 
-const MIN_CATCH_DELAY_MS = 2000
-const MAX_CATCH_DELAY_MS = 5000
-const CATCH_PROGRESS_BAR_WIDTH = 44
-const CATCH_PROGRESS_BAR_HEIGHT = 6
-const CATCH_PROGRESS_BAR_OFFSET_Y = 22
 const NO_CATCH_MESSAGE_DURATION_MS = 1800
-const BITE_FISH_SWIM_DURATION_MS = 1100
-const BITE_FISH_TURN_DURATION_MS = 650
-const FISH_BITE_POLL_INTERVAL_MS = 100
-const FISH_FORWARD_ANGLE_OFFSET = -90
+const FEEDBACK_CHAR_WIDTH = 7
+const FEEDBACK_HORIZONTAL_PADDING = 24
+const FEEDBACK_MIN_WIDTH = 120
 
 type PendingCatchState = {
   x: number
@@ -51,6 +46,7 @@ type CatchFeedbackState = {
 
 type ActiveBiteFish = {
   id: string
+  restoreFishId?: string
   fromX: number
   fromY: number
   toX: number
@@ -61,10 +57,23 @@ type ActiveBiteFish = {
   size: number
   paper: Paper
   startedAt: number
+  fadeFrom: number
   progress: number
+  fadeProgress: number
   swimProgress: number
   rotationProgress: number
+  shakeProgress: number
 } | null
+
+type StaticCandidate = {
+  id: string
+  paper: Paper
+  spawnX: number
+  spawnY: number
+  biteDelay: number
+  fishSize: number
+  startAngleOffset: number
+}
 
 function Cast(_props: CastProps) {
   const { enabled = true } = _props
@@ -75,108 +84,215 @@ function Cast(_props: CastProps) {
   const clusters = useCastStore((state) => state.clusters)
   const fishDescriptors = useCastStore((state) => state.fishDescriptors)
   const setCastPosition = useCastStore((state) => state.setCastPosition)
-  const findPapersWithinRadius = useCastStore((state) => state.findPapersWithinRadius)
-  const getClosestPaper = useCastStore((state) => state.getClosestPaper)
   const setCaughtPaper = useCastStore((state) => state.setCaughtPaper)
   const setIsCatchResultOpen = useCastStore((state) => state.setIsCatchResultOpen)
   const hideFish = useCastStore((state) => state.hideFish)
+  const showFish = useCastStore((state) => state.showFish)
   const setCastTarget = useFishingStore((state) => state.setCastTarget)
   const isCastAnimating = useFishingStore((state) => state.isCastAnimating)
   const keywormKeywords = useKeywormStore((state) => state.keywords)
   const { xScale, yScale } = useCoordinateSystem()
   const isDebugMode = useDebugStore((state) => state.isDebugMode)
-  const catchTimeoutRef = useRef<number | null>(null)
   const bitePollTimeoutRef = useRef<number | null>(null)
-  const catchAnimationFrameRef = useRef<number | null>(null)
+  const staticBiteTimeoutRef = useRef<number | null>(null)
+  const noBiteHintTimeoutRef = useRef<number | null>(null)
   const biteAnimationFrameRef = useRef<number | null>(null)
   const biteFishRef = useRef<SVGGElement>(null)
   const feedbackTimeoutRef = useRef<number | null>(null)
+  const activeBiteFishRef = useRef<ActiveBiteFish>(null)
   const [pendingCatch, setPendingCatch] = useState<PendingCatchState | null>(null)
-  const [catchProgress, setCatchProgress] = useState(1)
-  const [isCatchTimerVisible, setIsCatchTimerVisible] = useState(false)
   const [catchFeedback, setCatchFeedback] = useState<CatchFeedbackState>(null)
   const [activeBiteFish, setActiveBiteFish] = useState<ActiveBiteFish>(null)
 
-  const clearPendingCatch = useCallback(() => {
-    if (catchTimeoutRef.current !== null) {
-      window.clearTimeout(catchTimeoutRef.current)
-      catchTimeoutRef.current = null
-    }
+  useEffect(() => {
+    activeBiteFishRef.current = activeBiteFish
+  }, [activeBiteFish])
 
+  const clearPendingCatch = useCallback(() => {
     if (bitePollTimeoutRef.current !== null) {
       window.clearTimeout(bitePollTimeoutRef.current)
       bitePollTimeoutRef.current = null
     }
 
-    if (catchAnimationFrameRef.current !== null) {
-      cancelAnimationFrame(catchAnimationFrameRef.current)
-      catchAnimationFrameRef.current = null
+    if (staticBiteTimeoutRef.current !== null) {
+      window.clearTimeout(staticBiteTimeoutRef.current)
+      staticBiteTimeoutRef.current = null
     }
 
-    setIsCatchTimerVisible(false)
+    if (noBiteHintTimeoutRef.current !== null) {
+      window.clearTimeout(noBiteHintTimeoutRef.current)
+      noBiteHintTimeoutRef.current = null
+    }
   }, [])
 
   const finishCatch = useCallback((paper: Paper) => {
+    clearPendingCatch()
     setCaughtPaper({
       ...paper,
       usedKeyworm: [...keywormKeywords],
     })
     setIsCatchResultOpen(true)
+    activeBiteFishRef.current = null
     setActiveBiteFish(null)
     setCastPosition(null)
-  }, [keywormKeywords, setCastPosition, setCaughtPaper, setIsCatchResultOpen])
+  }, [clearPendingCatch, keywormKeywords, setCastPosition, setCaughtPaper, setIsCatchResultOpen])
 
-  const startBiteFish = useCallback((target: NonNullable<ReturnType<typeof findFishBiteTarget>>, castX: number, castY: number) => {
+  const cancelActiveHook = useCallback((restoreHiddenFish = true) => {
+    clearPendingCatch()
+
+    if (biteAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(biteAnimationFrameRef.current)
+      biteAnimationFrameRef.current = null
+    }
+
+    setPendingCatch(null)
+    setCastPosition(null)
+    setCatchFeedback(null)
+    activeBiteFishRef.current = null
+
+    setActiveBiteFish((currentBiteFish) => {
+      if (restoreHiddenFish && currentBiteFish?.restoreFishId) {
+        showFish(currentBiteFish.restoreFishId)
+      }
+
+      return null
+    })
+  }, [clearPendingCatch, setCastPosition, showFish])
+
+  const startBiteAnimation = useCallback((bite: {
+    id: string
+    restoreFishId?: string
+    fromX: number
+    fromY: number
+    toX: number
+    toY: number
+    startAngle: number
+    targetAngle: number
+    facingScaleX: number
+    size: number
+    paper: Paper
+    fadeFrom: number
+    adjustStartPoint: boolean
+  }) => {
     if (biteAnimationFrameRef.current !== null) {
       cancelAnimationFrame(biteAnimationFrameRef.current)
       biteAnimationFrameRef.current = null
     }
 
     const startedAt = performance.now()
-    const startAngle = target.pose.angle
-    const targetAngle = Math.atan2(castY - target.pose.y, castX - target.pose.x) * 180 / Math.PI
-    const facingScaleX = target.fish.direction === 'counterclockwise' ? -1 : 1
-    hideFish(target.fish.id)
+    const mouthOffset = getMouthOffset(
+      bite.targetAngle,
+      bite.size,
+      bite.facingScaleX
+    )
+    const endCenterX = bite.toX - mouthOffset.x
+    const endCenterY = bite.toY - mouthOffset.y
+    const adjustedStart = bite.adjustStartPoint
+      ? getAdjustedBiteStartPoint(
+          bite.fromX,
+          bite.fromY,
+          endCenterX,
+          endCenterY,
+          bite.targetAngle,
+          bite.size
+        )
+      : { x: bite.fromX, y: bite.fromY }
 
     const animate = () => {
       const elapsed = performance.now() - startedAt
       const rotationProgress = easeInOutCubic(
-        Math.min(1, elapsed / BITE_FISH_TURN_DURATION_MS)
+        Math.min(1, elapsed / catchingConfig.biteFishTurnDurationMs)
       )
-      const swimElapsed = Math.max(0, elapsed - BITE_FISH_TURN_DURATION_MS)
+      const fadeProgress = easeOutCubic(
+        Math.min(1, elapsed / catchingConfig.biteFishFadeInDurationMs)
+      )
+      const swimElapsed = Math.max(0, elapsed - catchingConfig.biteFishTurnDurationMs)
       const swimProgress = easeInOutCubic(
-        Math.min(1, swimElapsed / BITE_FISH_SWIM_DURATION_MS)
+        Math.min(1, swimElapsed / catchingConfig.biteFishSwimDurationMs)
       )
-      const progress = Math.max(rotationProgress, swimProgress)
+      const shakeElapsed = Math.max(
+        0,
+        elapsed - catchingConfig.biteFishTurnDurationMs - catchingConfig.biteFishSwimDurationMs
+      )
+      const shakeProgress = Math.min(
+        1,
+        shakeElapsed / catchingConfig.biteFishShakeDurationMs
+      )
+      const progress = Math.max(rotationProgress, swimProgress, shakeProgress)
 
       setActiveBiteFish({
-        id: target.fish.id,
-        fromX: target.pose.x,
-        fromY: target.pose.y,
-        toX: castX,
-        toY: castY,
-        startAngle,
-        targetAngle,
-        facingScaleX,
-        size: target.fish.size,
-        paper: target.paper,
+        id: bite.id,
+        restoreFishId: bite.restoreFishId,
+        fromX: adjustedStart.x,
+        fromY: adjustedStart.y,
+        toX: endCenterX,
+        toY: endCenterY,
+        startAngle: bite.startAngle,
+        targetAngle: bite.targetAngle,
+        facingScaleX: bite.facingScaleX,
+        size: bite.size,
+        paper: bite.paper,
         startedAt,
+        fadeFrom: bite.fadeFrom,
         progress,
+        fadeProgress,
         swimProgress,
         rotationProgress,
+        shakeProgress,
       })
 
-      if (swimProgress < 1) {
+      if (shakeProgress < 1) {
         biteAnimationFrameRef.current = requestAnimationFrame(animate)
         return
       }
 
       biteAnimationFrameRef.current = null
-      finishCatch(target.paper)
+      finishCatch(bite.paper)
     }
 
     animate()
-  }, [finishCatch, hideFish])
+  }, [finishCatch])
+
+  const startVisibleFishBite = useCallback((target: NonNullable<ReturnType<typeof findFishBiteTarget>>, castX: number, castY: number) => {
+    const targetAngle = Math.atan2(castY - target.pose.y, castX - target.pose.x) * 180 / Math.PI
+    const facingScaleX = target.fish.direction === 'counterclockwise' ? -1 : 1
+    hideFish(target.fish.id)
+
+    startBiteAnimation({
+      id: target.fish.id,
+      restoreFishId: target.fish.id,
+      fromX: target.pose.x,
+      fromY: target.pose.y,
+      toX: castX,
+      toY: castY,
+      startAngle: target.pose.angle,
+      targetAngle,
+      facingScaleX,
+      size: target.fish.size,
+      paper: target.paper,
+      fadeFrom: 1,
+      adjustStartPoint: false,
+    })
+  }, [hideFish, startBiteAnimation])
+
+  const startStaticFishBite = useCallback((candidate: StaticCandidate, castX: number, castY: number) => {
+    const targetAngle = Math.atan2(castY - candidate.spawnY, castX - candidate.spawnX) * 180 / Math.PI
+
+    startBiteAnimation({
+      id: candidate.id,
+      fromX: candidate.spawnX,
+      fromY: candidate.spawnY,
+      toX: castX,
+      toY: castY,
+      startAngle: targetAngle + candidate.startAngleOffset,
+      targetAngle,
+      facingScaleX: 1,
+      size: candidate.fishSize,
+      paper: candidate.paper,
+      fadeFrom: 0,
+      adjustStartPoint: true,
+    })
+  }, [startBiteAnimation])
 
   const showCatchFeedback = useCallback((x: number, y: number, message: string) => {
     if (feedbackTimeoutRef.current !== null) {
@@ -190,58 +306,8 @@ function Cast(_props: CastProps) {
     }, NO_CATCH_MESSAGE_DURATION_MS)
   }, [])
 
-  const resolveCatch = useCallback((castX: number, castY: number) => {
+  const startWaitingForBite = useCallback((castX: number, castY: number) => {
     clearPendingCatch()
-    setPendingCatch(null)
-
-    if (!xScale || !yScale) {
-      console.log('🎣 Coordinate scales not ready yet')
-      setCastPosition(null)
-      return
-    }
-
-    const papersInRadius = findPapersWithinRadius(
-      castX,
-      castY,
-      rippleConfig.castRadius,
-      xScale,
-      yScale
-    )
-
-    if (papersInRadius.length > 0) {
-      const paper = getClosestPaper(papersInRadius, castX, castY, xScale, yScale)
-
-      if (paper) {
-        console.log('🎣 Caught a paper!', {
-          title: paper.title,
-          authors: paper.authorNames,
-          year: paper.year,
-          conference: paper.conference,
-          papersInRadius: papersInRadius.length,
-          paper,
-        })
-
-        finishCatch(paper)
-      }
-    } else {
-      console.log('🎣 No papers found within radius')
-      setCaughtPaper(null)
-      showCatchFeedback(castX, castY, 'No paper caught')
-    }
-
-    setCastPosition(null)
-  }, [clearPendingCatch, findPapersWithinRadius, finishCatch, getClosestPaper, setCaughtPaper, setCastPosition, showCatchFeedback, xScale, yScale])
-
-  const startCatchTimer = useCallback((castX: number, castY: number) => {
-    clearPendingCatch()
-
-    const duration = Math.floor(
-      Math.random() * (MAX_CATCH_DELAY_MS - MIN_CATCH_DELAY_MS + 1)
-    ) + MIN_CATCH_DELAY_MS
-    const startTime = performance.now()
-
-    setCatchProgress(1)
-    setIsCatchTimerVisible(true)
 
     const checkForFishBite = () => {
       const fishBiteTarget = findFishBiteTarget(
@@ -256,34 +322,30 @@ function Cast(_props: CastProps) {
           title: fishBiteTarget.paper.title,
         })
         clearPendingCatch()
-        startBiteFish(fishBiteTarget, castX, castY)
+        startVisibleFishBite(fishBiteTarget, castX, castY)
         return
       }
 
       bitePollTimeoutRef.current = window.setTimeout(
         checkForFishBite,
-        FISH_BITE_POLL_INTERVAL_MS
+        catchingConfig.fishBitePollIntervalMs
       )
     }
 
-    const updateProgress = () => {
-      const elapsed = performance.now() - startTime
-      const remainingProgress = Math.max(0, 1 - elapsed / duration)
-      setCatchProgress(remainingProgress)
-
-      if (remainingProgress > 0) {
-        catchAnimationFrameRef.current = requestAnimationFrame(updateProgress)
-      } else {
-        catchAnimationFrameRef.current = null
-      }
+    const staticCandidate = getStaticCandidate(castX, castY, clusters, xScale, yScale)
+    if (staticCandidate) {
+      staticBiteTimeoutRef.current = window.setTimeout(() => {
+        clearPendingCatch()
+        startStaticFishBite(staticCandidate, castX, castY)
+      }, staticCandidate.biteDelay)
+    } else {
+      noBiteHintTimeoutRef.current = window.setTimeout(() => {
+        showCatchFeedback(castX, castY, 'No bite yet. Try casting elsewhere.')
+      }, catchingConfig.noBiteHintDelayMs)
     }
 
-    catchAnimationFrameRef.current = requestAnimationFrame(updateProgress)
     checkForFishBite()
-    catchTimeoutRef.current = window.setTimeout(() => {
-      resolveCatch(castX, castY)
-    }, duration)
-  }, [clearPendingCatch, clusters, fishDescriptors, resolveCatch, startBiteFish])
+  }, [clearPendingCatch, clusters, fishDescriptors, showCatchFeedback, startStaticFishBite, startVisibleFishBite, xScale, yScale])
 
   // Handle click on fishable area to set cast position
   const handleFishableAreaClick = (e: React.MouseEvent<SVGPathElement>) => {
@@ -312,6 +374,8 @@ function Cast(_props: CastProps) {
     const contentX = svgPoint.x - MARGIN
     const contentY = svgPoint.y - MARGIN
 
+    cancelActiveHook()
+
     // Set the cast position at the clicked location
     setCastPosition({ x: contentX, y: contentY })
     setCatchFeedback(null)
@@ -320,7 +384,7 @@ function Cast(_props: CastProps) {
     // Trigger the fishing rod cast to this SVG coordinate
     setCastTarget(contentX, contentY)
 
-    // Wait for the cast animation to finish before starting the catch timer
+    // Wait for the cast animation to finish before the hook starts waiting for fish.
     setPendingCatch({
       x: contentX,
       y: contentY,
@@ -418,24 +482,21 @@ function Cast(_props: CastProps) {
     }
 
     if (pendingCatch.phase === 'waiting-for-animation-end' && !isCastAnimating) {
-      startCatchTimer(pendingCatch.x, pendingCatch.y)
+      startWaitingForBite(pendingCatch.x, pendingCatch.y)
       setPendingCatch(null)
     }
-  }, [isCastAnimating, pendingCatch, startCatchTimer])
+  }, [isCastAnimating, pendingCatch, startWaitingForBite])
 
   useEffect(() => {
-    if (!enabled && castPosition) {
-      clearPendingCatch()
-      setPendingCatch(null)
-      setCastPosition(null)
+    if ((!enabled || isMoving) && (castPosition || pendingCatch || activeBiteFish)) {
+      cancelActiveHook()
     }
-  }, [castPosition, clearPendingCatch, enabled, setCastPosition])
+  }, [activeBiteFish, cancelActiveHook, castPosition, enabled, isMoving, pendingCatch])
 
   useEffect(() => {
     if (!castPosition) {
       clearPendingCatch()
       setPendingCatch(null)
-      setCatchProgress(1)
     }
   }, [castPosition, clearPendingCatch])
 
@@ -450,8 +511,12 @@ function Cast(_props: CastProps) {
       if (biteAnimationFrameRef.current !== null) {
         cancelAnimationFrame(biteAnimationFrameRef.current)
       }
+
+      if (activeBiteFishRef.current?.restoreFishId) {
+        showFish(activeBiteFishRef.current.restoreFishId)
+      }
     }
-  }, [clearPendingCatch])
+  }, [clearPendingCatch, showFish])
 
   useEffect(() => {
     if (!biteFishRef.current) {
@@ -459,7 +524,7 @@ function Cast(_props: CastProps) {
     }
 
     biteFishRef.current.querySelectorAll('path').forEach((path) => {
-      path.setAttribute('fill', '#4a7c7e')
+      path.setAttribute('fill', '#315f63')
     })
   }, [activeBiteFish?.id])
 
@@ -600,16 +665,30 @@ function Cast(_props: CastProps) {
         <>
           {/* Debug: show search radius circle */}
           {isDebugMode && (
-            <circle
-              cx={castPosition.x}
-              cy={castPosition.y}
-              r={rippleConfig.castRadius}
-              fill="none"
-              stroke="#fbbf24"
-              strokeWidth={2}
-              strokeDasharray="5,5"
-              opacity={0.5}
-            />
+            <>
+              <circle
+                cx={castPosition.x}
+                cy={castPosition.y}
+                r={catchingConfig.hookDebugRadius}
+                fill="none"
+                stroke="#fbbf24"
+                strokeWidth={2}
+                strokeDasharray="5,5"
+                opacity={0.5}
+              />
+              <circle
+                cx={castPosition.x}
+                cy={castPosition.y}
+                r={catchingConfig.neighbourhoodRadius}
+                fill="none"
+                stroke="#a855f7"
+                strokeWidth={1.5}
+                strokeDasharray="3,4"
+                opacity={0.65}
+              >
+                <title>Neighbourhood radius</title>
+              </circle>
+            </>
           )}
 
           {/* Yellow/amber dot at cast position */}
@@ -620,33 +699,6 @@ function Cast(_props: CastProps) {
             fill="#fbbf24"
             opacity={0.9}
           />
-
-          {/* Catch timer progress bar */}
-          {isCatchTimerVisible && (
-            <g
-              transform={`translate(${castPosition.x - CATCH_PROGRESS_BAR_WIDTH / 2}, ${castPosition.y - CATCH_PROGRESS_BAR_OFFSET_Y})`}
-              pointerEvents="none"
-            >
-              <rect
-                x={0}
-                y={0}
-                width={CATCH_PROGRESS_BAR_WIDTH}
-                height={CATCH_PROGRESS_BAR_HEIGHT}
-                rx={CATCH_PROGRESS_BAR_HEIGHT / 2}
-                fill="#1f2937"
-                opacity={0.55}
-              />
-              <rect
-                x={0}
-                y={0}
-                width={CATCH_PROGRESS_BAR_WIDTH * catchProgress}
-                height={CATCH_PROGRESS_BAR_HEIGHT}
-                rx={CATCH_PROGRESS_BAR_HEIGHT / 2}
-                fill="#fbbf24"
-                opacity={0.95}
-              />
-            </g>
-          )}
 
           {/* Optional: Add a ripple effect */}
           <circle
@@ -678,17 +730,11 @@ function Cast(_props: CastProps) {
 
       {activeBiteFish && (
         <g
-          transform={`translate(${
-            activeBiteFish.fromX + (activeBiteFish.toX - activeBiteFish.fromX) * activeBiteFish.swimProgress
-          }, ${
-            activeBiteFish.fromY + (activeBiteFish.toY - activeBiteFish.fromY) * activeBiteFish.swimProgress
-          }) rotate(${interpolateAngle(
-            activeBiteFish.startAngle,
-            activeBiteFish.targetAngle + FISH_FORWARD_ANGLE_OFFSET,
-            activeBiteFish.rotationProgress
-          )})`}
+          transform={getBiteFishTransform(activeBiteFish)}
+          opacity={getBiteFishOpacity(activeBiteFish)}
           pointerEvents="none"
         >
+          <g transform={getBiteFishPivotTransform(activeBiteFish)}>
           <g
             ref={biteFishRef}
             style={{
@@ -704,15 +750,7 @@ function Cast(_props: CastProps) {
               style={{ overflow: 'visible' }}
             />
           </g>
-          <circle
-            cx={0}
-            cy={0}
-            r={activeBiteFish.size * 0.75}
-            fill="none"
-            stroke="#fbbf24"
-            strokeWidth={1.5}
-            opacity={0.55}
-          />
+          </g>
         </g>
       )}
 
@@ -722,9 +760,9 @@ function Cast(_props: CastProps) {
           pointerEvents="none"
         >
           <rect
-            x={-60}
+            x={-getCatchFeedbackWidth(catchFeedback.message) / 2}
             y={-14}
-            width={120}
+            width={getCatchFeedbackWidth(catchFeedback.message)}
             height={28}
             rx={14}
             fill="#111827"
@@ -753,9 +791,274 @@ function easeInOutCubic(value: number) {
     : 1 - Math.pow(-2 * value + 2, 3) / 2
 }
 
+function easeOutCubic(value: number) {
+  return 1 - Math.pow(1 - value, 3)
+}
+
 function interpolateAngle(startAngle: number, endAngle: number, progress: number) {
   const delta = ((((endAngle - startAngle) % 360) + 540) % 360) - 180
   return startAngle + delta * progress
+}
+
+function getCatchFeedbackWidth(message: string) {
+  return Math.max(
+    FEEDBACK_MIN_WIDTH,
+    message.length * FEEDBACK_CHAR_WIDTH + FEEDBACK_HORIZONTAL_PADDING
+  )
+}
+
+function getBiteFishOpacity(biteFish: NonNullable<ActiveBiteFish>) {
+  return biteFish.fadeFrom + (1 - biteFish.fadeFrom) * biteFish.fadeProgress
+}
+
+function getBiteFishTransform(biteFish: NonNullable<ActiveBiteFish>) {
+  const baseX = biteFish.fromX + (biteFish.toX - biteFish.fromX) * biteFish.swimProgress
+  const baseY = biteFish.fromY + (biteFish.toY - biteFish.fromY) * biteFish.swimProgress
+  const angle = interpolateAngle(
+    biteFish.startAngle,
+    biteFish.targetAngle + catchingConfig.fishForwardAngleOffset,
+    biteFish.rotationProgress
+  )
+
+  return `translate(${baseX}, ${baseY}) rotate(${angle})`
+}
+
+function getBiteFishPivotTransform(biteFish: NonNullable<ActiveBiteFish>) {
+  const shakeRotation = getBiteFishShakeRotation(biteFish)
+  const pivotX = 0
+  const pivotY = biteFish.size * catchingConfig.fishMouthOffsetScale
+
+  return `translate(${pivotX}, ${pivotY}) rotate(${shakeRotation}) translate(${-pivotX}, ${-pivotY})`
+}
+
+function getBiteFishShakeRotation(biteFish: NonNullable<ActiveBiteFish>) {
+  if (biteFish.shakeProgress <= 0) {
+    return 0
+  }
+
+  const decay = 1 - biteFish.shakeProgress
+  const wave = Math.sin(
+    biteFish.shakeProgress * Math.PI * 2 * catchingConfig.biteFishShakeCycles
+  )
+
+  return wave * catchingConfig.biteFishShakeRotationDegrees * decay
+}
+
+function getMouthOffset(targetAngle: number, fishSize: number, facingScaleX: number) {
+  const visualAngle = targetAngle + catchingConfig.fishForwardAngleOffset
+  const localMouthAngle = visualAngle + (facingScaleX === -1 ? 180 : 0) - catchingConfig.fishForwardAngleOffset
+  const mouthRad = localMouthAngle * Math.PI / 180
+  const mouthDistance = fishSize * catchingConfig.fishMouthOffsetScale
+
+  return {
+    x: Math.cos(mouthRad) * mouthDistance,
+    y: Math.sin(mouthRad) * mouthDistance,
+  }
+}
+
+function getAdjustedBiteStartPoint(
+  fromX: number,
+  fromY: number,
+  endCenterX: number,
+  endCenterY: number,
+  targetAngle: number,
+  fishSize: number
+) {
+  const minDistance = fishSize * catchingConfig.minBiteFishSwimDistanceScale
+  const distance = getDistance(fromX, fromY, endCenterX, endCenterY)
+
+  if (distance >= minDistance) {
+    return { x: fromX, y: fromY }
+  }
+
+  const targetRad = targetAngle * Math.PI / 180
+
+  return {
+    x: endCenterX - Math.cos(targetRad) * minDistance,
+    y: endCenterY - Math.sin(targetRad) * minDistance,
+  }
+}
+
+function getStaticCandidate(
+  castX: number,
+  castY: number,
+  clusters: Array<{ x: number; y: number; count: number; papers: Paper[] }>,
+  xScale: ((x: number) => number) | null,
+  yScale: ((y: number) => number) | null
+): StaticCandidate | null {
+  return (
+    getClusterStaticCandidate(castX, castY, clusters) ??
+    getNeighbourhoodStaticCandidate(castX, castY, clusters, xScale, yScale)
+  )
+}
+
+function getClusterStaticCandidate(
+  castX: number,
+  castY: number,
+  clusters: Array<{ x: number; y: number; count: number; papers: Paper[] }>
+): StaticCandidate | null {
+  let bestCluster: {
+    clusterIndex: number
+    normalizedDistance: number
+    cluster: { x: number; y: number; count: number; papers: Paper[] }
+  } | null = null
+
+  clusters.forEach((cluster, clusterIndex) => {
+    if (cluster.papers.length === 0) {
+      return
+    }
+
+    const metrics = getRippleMetrics(cluster.count)
+    const distance = getDistance(castX, castY, cluster.x, cluster.y)
+    const normalizedDistance = distance / metrics.influenceRadius
+
+    if (normalizedDistance > 1) {
+      return
+    }
+
+    if (!bestCluster || normalizedDistance < bestCluster.normalizedDistance) {
+      bestCluster = {
+        clusterIndex,
+        normalizedDistance,
+        cluster,
+      }
+    }
+  })
+
+  if (!bestCluster) {
+    return null
+  }
+
+  const { cluster, clusterIndex, normalizedDistance } = bestCluster
+  const distanceScore = 1 - clamp(normalizedDistance, 0, 1)
+  const delay = lerp(
+    catchingConfig.clusterBiteMaxDelayMs,
+    catchingConfig.clusterBiteMinDelayMs,
+    distanceScore
+  ) * lerp(
+    catchingConfig.clusterBiteJitterMin,
+    catchingConfig.clusterBiteJitterMax,
+    stableUnit(`cluster-bite-delay-${clusterIndex}-${Math.round(castX)}-${Math.round(castY)}`)
+  )
+  const spawnPoint = getClusterSpawnPoint(cluster.x, cluster.y, castX, castY)
+
+  return {
+    id: `cluster-bite-${clusterIndex}-${Math.round(castX)}-${Math.round(castY)}`,
+    paper: pickClusterPaper(cluster.papers, `cluster-paper-${clusterIndex}-${Math.round(castX)}-${Math.round(castY)}`),
+    spawnX: spawnPoint.x,
+    spawnY: spawnPoint.y,
+    biteDelay: delay,
+    fishSize: 28,
+    startAngleOffset: -45,
+  }
+}
+
+function getNeighbourhoodStaticCandidate(
+  castX: number,
+  castY: number,
+  clusters: Array<{ x: number; y: number; count: number; papers: Paper[] }>,
+  xScale: ((x: number) => number) | null,
+  yScale: ((y: number) => number) | null
+): StaticCandidate | null {
+  if (!xScale || !yScale) {
+    return null
+  }
+
+  let nearestPaper: {
+    paper: Paper
+    distance: number
+    paperX: number
+    paperY: number
+  } | null = null
+
+  for (const cluster of clusters) {
+    for (const paper of cluster.papers) {
+      const paperX = xScale(paper.x)
+      const paperY = yScale(paper.y)
+      const distance = getDistance(castX, castY, paperX, paperY)
+
+      if (distance > catchingConfig.neighbourhoodRadius) {
+        continue
+      }
+
+      if (!nearestPaper || distance < nearestPaper.distance) {
+        nearestPaper = {
+          paper,
+          distance,
+          paperX,
+          paperY,
+        }
+      }
+    }
+  }
+
+  if (!nearestPaper) {
+    return null
+  }
+
+  const distanceScore = 1 - clamp(
+    nearestPaper.distance / catchingConfig.neighbourhoodRadius,
+    0,
+    1
+  )
+  const delay = lerp(
+    catchingConfig.neighbourhoodBiteMaxDelayMs,
+    catchingConfig.neighbourhoodBiteMinDelayMs,
+    distanceScore
+  ) * lerp(
+    catchingConfig.neighbourhoodBiteJitterMin,
+    catchingConfig.neighbourhoodBiteJitterMax,
+    stableUnit(`neighbourhood-bite-delay-${Math.round(castX)}-${Math.round(castY)}`)
+  )
+  const spawnPoint = getNeighbourhoodSpawnPoint(
+    castX,
+    castY,
+    nearestPaper.paperX,
+    nearestPaper.paperY
+  )
+
+  return {
+    id: `neighbourhood-bite-${Math.round(castX)}-${Math.round(castY)}`,
+    paper: nearestPaper.paper,
+    spawnX: spawnPoint.x,
+    spawnY: spawnPoint.y,
+    biteDelay: delay,
+    fishSize: catchingConfig.neighbourhoodFishSize,
+    startAngleOffset: -30,
+  }
+}
+
+function getClusterSpawnPoint(clusterX: number, clusterY: number, castX: number, castY: number) {
+  return {
+    x: lerp(clusterX, castX, 0.35),
+    y: lerp(clusterY, castY, 0.35),
+  }
+}
+
+function getNeighbourhoodSpawnPoint(castX: number, castY: number, paperX: number, paperY: number) {
+  return {
+    x: lerp(castX, paperX, 0.65),
+    y: lerp(castY, paperY, 0.65),
+  }
+}
+
+function pickClusterPaper(papers: Paper[], seed: string) {
+  const index = Math.floor(stableUnit(seed) * papers.length)
+  return papers[index] ?? papers[0]
+}
+
+function getDistance(x1: number, y1: number, x2: number, y2: number) {
+  const dx = x1 - x2
+  const dy = y1 - y2
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function lerp(start: number, end: number, progress: number) {
+  return start + (end - start) * progress
 }
 
 export default Cast
