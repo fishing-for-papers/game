@@ -1,5 +1,6 @@
 import FishSvg from '../assets/fish/fish-01.svg?react'
 import { useRef, useEffect } from 'react'
+import type { FishDirection } from '../utils/fishMotion'
 
 interface FishProps {
   cx: number
@@ -7,8 +8,8 @@ interface FishProps {
   radius?: number
   speed?: number
   randomDelay?: number
-  direction?: 'clockwise' | 'counterclockwise'
-  randomStartOffset?: boolean
+  direction?: FishDirection
+  startOffset?: number
   size?: number
 }
 
@@ -19,7 +20,7 @@ function Fish({
   speed = 5 + Math.random() * 30, // Random speed between 15s and 25s
   randomDelay = 20,
   direction = 'counterclockwise',
-  randomStartOffset = true,
+  startOffset = 0,
   size = 25,
 }: FishProps) {
   const fishRef = useRef<SVGGElement>(null)
@@ -34,9 +35,6 @@ function Fish({
       })
     }
   }, [])
-    //Calculate random starting offset
-  const startOffset = randomStartOffset ? Math.random() * 360 : 0
-
   // Generate positions around the circle
   const steps = 24
   const xPositions: number[] = []
@@ -105,4 +103,3 @@ function Fish({
 }
 
 export default Fish
-

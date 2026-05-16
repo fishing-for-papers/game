@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Paper } from '../types/paper'
+import type { FishDescriptor } from '../utils/fishMotion'
 
 // Helper function to calculate Euclidean distance
 function calculateDistance(x1: number, y1: number, x2: number, y2: number): number {
@@ -19,6 +20,8 @@ interface CastState {
   // Grid data
   clusters: Cluster[]
   gridSize: number
+  fishDescriptors: FishDescriptor[]
+  hiddenFishIds: string[]
 
   // Cast position
   castPosition: { x: number; y: number } | null
@@ -34,6 +37,8 @@ interface CastActions {
     clusters: Cluster[],
     gridSize: number
   ) => void
+  setFishDescriptors: (fishDescriptors: FishDescriptor[]) => void
+  hideFish: (fishId: string) => void
 
   // Update cast position
   setCastPosition: (position: { x: number; y: number } | null) => void
@@ -70,12 +75,31 @@ export const useCastStore = create<CastStore>((set, get) => ({
   // Initial state
   clusters: [],
   gridSize: 20,
+  fishDescriptors: [],
+  hiddenFishIds: [],
   castPosition: null,
   caughtPaper: null,
   isCatchResultOpen: false,
 
   setClusters: (clusters, gridSize) => {
     set({ clusters, gridSize })
+  },
+
+  setFishDescriptors: (fishDescriptors) => {
+    set((state) => ({
+      fishDescriptors,
+      hiddenFishIds: state.hiddenFishIds.filter((fishId) =>
+        fishDescriptors.some((fish) => fish.id === fishId)
+      ),
+    }))
+  },
+
+  hideFish: (fishId) => {
+    set((state) => ({
+      hiddenFishIds: state.hiddenFishIds.includes(fishId)
+        ? state.hiddenFishIds
+        : [...state.hiddenFishIds, fishId],
+    }))
   },
 
   setCastPosition: (position) => {
