@@ -1,88 +1,53 @@
-# React + TypeScript + Vite
+# Fishing for Papers
+
+Fishing for Papers is a cozy, open-ended fishing game for serendipitous discovery of visualisation literature.
+
+## Demo
+
+- Online demo: <https://fishing-for-papers.github.io/game/>
+
+[![Watch the teaser](docs/media/teaser.png)](https://drive.google.com/file/d/14HquVIsWnTfCNbGIohMh4zyaxSYemSmz/view?usp=sharing)
+
+## Development
+
+### Prerequisites
+
+- Node.js 20+ recommended
+- pnpm
+
+### Install and Run
 
 ```bash
-npm install
-npm run dev      # start dev server
-npm run build    # build for production
-npm run preview  # preview production build
-
-# or with pnpm
 pnpm install
 pnpm dev
-pnpm build
-pnpm preview
 ```
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Environment Variables
 
-Currently, two official plugins are available:
+Create a local `.env` file in `public-repos/game/` based on `.env.example`:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `VITE_WORKER_URL`: public Cloudflare Worker endpoint
+- `VITE_R2_PUBLIC_DOMAIN`: public R2 domain for generated assets
 
-## React Compiler
+## Deployment
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+- GitHub Pages is deployed via GitHub Actions.
+- Vite `base` is set to `/game/` for the project site path.
+- Recommended branch workflow:
+  - `dev`: active development
+  - `main`: stable release/deployment
+  - merge via pull request (`dev -> main`)
 
-Note: This will impact Vite dev & build performances.
+## Citation
 
-## Expanding the ESLint configuration
+If you use this project in research or teaching, please cite:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bibtex
+@inproceedings{eschner2026fishing,
+  title     = {Fishing for Papers: A Serendipitous Knowledge Discovery Game},
+  author    = {Eschner, Johannes and Guo, Yuhan},
+  booktitle = {EuroVis Workshop on Visualization Play, Games, and Activities (VisGames)},
+  year      = {2026},
+  month     = jun,
+}
 ```
