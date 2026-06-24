@@ -49,16 +49,6 @@ function CatchResult({ paper, onClose, closeButtonText = 'Close' }: CatchResultP
     }, 300) // Match animation duration
   }
 
-  // Generate creative prompt for fish image
-  const generatePrompt = (title: string, abstract: string): string => {
-    return [
-      `Create a dreamy flat art style fish profile, inspired by the academic paper titled "${title}"`,
-      'Flat art 2d game style, avoid bold strokes, highly detailed, dreamy, intricate patterns, artistic, beautiful, creative',
-      'Ensure at least 15% margin on all sides of the fish',
-      `create a fish that perfectly representing the essence of the research: "${abstract}"`
-    ].join(' ')
-  }
-
   // Handle fish image generation
   const handleGenerateImage = async () => {
     if (!caughtPaper || isGenerating) return
@@ -67,15 +57,14 @@ function CatchResult({ paper, onClose, closeButtonText = 'Close' }: CatchResultP
     setImageError(false)
 
     try {
-      const prompt = generatePrompt(caughtPaper.title, caughtPaper.abstract || '')
       const workerUrl = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787'
       const response = await fetch(`${workerUrl}/generate-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           doi: caughtPaper.doi,
-          prompt: prompt,
-          size: '1536x1024'
+          title: caughtPaper.title,
+          abstract: caughtPaper.abstract || ''
         })
       })
 
@@ -101,15 +90,14 @@ function CatchResult({ paper, onClose, closeButtonText = 'Close' }: CatchResultP
     setImageError(false)
 
     try {
-      const prompt = generatePrompt(caughtPaper.title, caughtPaper.abstract || '')
       const workerUrl = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787'
       const response = await fetch(`${workerUrl}/regenerate-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           doi: caughtPaper.doi,
-          prompt: prompt,
-          size: '1536x1024'
+          title: caughtPaper.title,
+          abstract: caughtPaper.abstract || ''
         })
       })
 
